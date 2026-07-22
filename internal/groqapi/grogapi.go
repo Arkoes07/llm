@@ -21,12 +21,12 @@ func New(cfg *config.Config) *Service {
 	}
 }
 
-type createChatReq struct {
+type chatReq struct {
 	Model    string           `json:"model"`
 	Messages []domain.Message `json:"messages"`
 }
 
-type createChatResp struct {
+type chatResp struct {
 	ID      string   `json:"id"`
 	Model   string   `json:"model"`
 	Choices []choice `json:"choices"`
@@ -36,8 +36,8 @@ type choice struct {
 	Message domain.Message `json:"message"`
 }
 
-func (s *Service) CreateChat(messages []domain.Message) (domain.Message, error) {
-	chatReq := createChatReq{
+func (s *Service) Chat(messages []domain.Message) (domain.Message, error) {
+	chatReq := chatReq{
 		Model:    s.cfg.GrogModelName,
 		Messages: messages,
 	}
@@ -57,7 +57,7 @@ func (s *Service) CreateChat(messages []domain.Message) (domain.Message, error) 
 	}
 	defer resp.Body.Close()
 
-	var res createChatResp
+	var res chatResp
 	raw, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(raw, &res)
 	if err != nil {

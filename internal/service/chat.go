@@ -7,12 +7,12 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) CreateChat(content string) (string, error) {
+func (s *Service) Chat(content string) (string, error) {
 	if content == "" {
 		return "", errors.New("empty message")
 	}
 
-	res, err := s.groq.CreateChat([]domain.Message{
+	res, err := s.groq.Chat([]domain.Message{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
@@ -23,7 +23,7 @@ func (s *Service) CreateChat(content string) (string, error) {
 	return res.Content, nil
 }
 
-func (s *Service) CreateChatWithSession(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
+func (s *Service) ChatWithSession(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
 	if content == "" {
 		return sessID, "", errors.New("empty message")
 	}
@@ -45,7 +45,7 @@ func (s *Service) CreateChatWithSession(sessID uuid.UUID, content string) (uuid.
 	}
 	newMsgs = append(newMsgs, msg)
 
-	res, err := s.groq.CreateChat(append(exiMsgs, newMsgs...))
+	res, err := s.groq.Chat(append(exiMsgs, newMsgs...))
 	if err != nil {
 		return sessID, "", err
 	}

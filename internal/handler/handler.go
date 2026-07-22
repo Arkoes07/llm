@@ -28,8 +28,8 @@ func (h *Handler) Router() http.Handler {
 	r.Use(middleware.Timeout(requestTimeout))
 
 	r.Get("/healthz", h.health)
-	r.Post("/chats", h.createChat)
-	r.Post("/chats/v2", h.createChatWithSession)
+	r.Post("/chat", h.chat)
+	r.Post("/chat/v2", h.chatWithSession)
 
 	return r
 }
@@ -38,28 +38,28 @@ func (h *Handler) health(w http.ResponseWriter, _ *http.Request) {
 	httpx.JSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
-type createChatWithSessionBody struct {
+type chatWithSessionBody struct {
 	SessionID *uuid.UUID `json:"session_id,omitempty"`
 	Content   string     `json:"content"`
 }
 
-func (h *Handler) createChat(w http.ResponseWriter, r *http.Request) {
-	var in createChatWithSessionBody
+func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
+	var in chatWithSessionBody
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
 
-	result, err := h.svc.CreateChat(in.Content)
+	result, err := h.svc.Chat(in.Content)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
 
-	httpx.JSON(w, http.StatusCreated, createChatWithSessionBody{Content: result})
+	httpx.JSON(w, http.StatusCreated, chatWithSessionBody{Content: result})
 }
 
-func (h *Handler) createChatWithSession(w http.ResponseWriter, r *http.Request) {
-	var in createChatWithSessionBody
+func (h *Handler) chatWithSession(w http.ResponseWriter, r *http.Request) {
+	var in chatWithSessionBody
 	if !httpx.Decode(w, r, &in) {
 		return
 	}
@@ -69,13 +69,13 @@ func (h *Handler) createChatWithSession(w http.ResponseWriter, r *http.Request) 
 		sessID = *in.SessionID
 	}
 
-	id, result, err := h.svc.CreateChatWithSession(sessID, in.Content)
+	id, result, err := h.svc.ChatWithSession(sessID, in.Content)
 	if err != nil {
 		httpx.WriteError(w, err)
 		return
 	}
 
-	httpx.JSON(w, http.StatusCreated, createChatWithSessionBody{
+	httpx.JSON(w, http.StatusCreated, chatWithSessionBody{
 		SessionID: &id,
 		Content:   result,
 	})
