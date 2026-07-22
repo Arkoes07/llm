@@ -14,9 +14,8 @@ import (
 	"time"
 
 	"github.com/arkoes07/llm/internal/config"
-	"github.com/arkoes07/llm/internal/groqapi"
 	"github.com/arkoes07/llm/internal/handler"
-	"github.com/arkoes07/llm/internal/service"
+	"github.com/arkoes07/llm/internal/service/grogapi"
 )
 
 const (
@@ -33,12 +32,11 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	groq := groqapi.New(&cfg)
-	svc := service.New(groq)
+	groqapiSvc := grogapi.New(&cfg)
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(svc).Router(),
+		Handler:           handler.New(groqapiSvc).Router(),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

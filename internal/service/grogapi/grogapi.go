@@ -1,4 +1,4 @@
-package groqapi
+package grogapi
 
 import (
 	"bytes"
@@ -7,23 +7,13 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/arkoes07/llm/internal/config"
 	"github.com/arkoes07/llm/internal/domain"
 )
-
-type Service struct {
-	cfg *config.Config
-}
-
-func New(cfg *config.Config) *Service {
-	return &Service{
-		cfg: cfg,
-	}
-}
 
 type chatReq struct {
 	Model    string           `json:"model"`
 	Messages []domain.Message `json:"messages"`
+	Tools    []domain.Tool    `json:"tools"`
 }
 
 type chatResp struct {
@@ -36,10 +26,11 @@ type choice struct {
 	Message domain.Message `json:"message"`
 }
 
-func (s *Service) Chat(messages []domain.Message) (domain.Message, error) {
+func (s *Service) chat(messages []domain.Message, tools ...domain.Tool) (domain.Message, error) {
 	chatReq := chatReq{
 		Model:    s.cfg.GrogModelName,
 		Messages: messages,
+		Tools:    tools,
 	}
 
 	body, _ := json.Marshal(chatReq)
