@@ -31,7 +31,7 @@ func New(cfg *config.Config) *Service {
 		defer ticker.Stop()
 
 		for range ticker.C {
-			s.deleteInvalidMessagesCache()
+			s.deleteExpiredSessions()
 		}
 	}()
 
@@ -61,7 +61,7 @@ type toolFunc struct {
 	Name        string    `json:"name"`
 	Description string    `json:"description"`
 	Arguments   string    `json:"arguments,omitempty"`
-	Parameters  funcParam `json:"parameters,omitempty"`
+	Parameters  funcParam `json:"parameters,omitzero"`
 }
 
 type funcParam struct {

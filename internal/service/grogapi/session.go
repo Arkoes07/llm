@@ -23,7 +23,7 @@ func (s *Service) getMessagesBySessionID(sessID uuid.UUID) []message {
 	return data.msgs
 }
 
-func (s *Service) appendMessagesBySessionID(sessID uuid.UUID, msgs ...message) {
+func (s *Service) setMessagesBySessionID(sessID uuid.UUID, msgs []message) {
 	s.msgsMU.Lock()
 	defer s.msgsMU.Unlock()
 
@@ -35,7 +35,7 @@ func (s *Service) appendMessagesBySessionID(sessID uuid.UUID, msgs ...message) {
 	s.msgsCache[sessID].msgs = append(s.msgsCache[sessID].msgs, msgs...)
 }
 
-func (s *Service) deleteInvalidMessagesCache() {
+func (s *Service) deleteExpiredSessions() {
 	s.msgsMU.Lock()
 	defer s.msgsMU.Unlock()
 
@@ -45,4 +45,25 @@ func (s *Service) deleteInvalidMessagesCache() {
 			delete(s.msgsCache, sessID)
 		}
 	}
+}
+
+func (s *Service) loadMessagesBySessionID(sessID uuid.UUID, systemContent, userContent string) (uuid.UUID, []message) {
+	if sessID == uuid.Nil {
+		sessID = uuid.New()
+	}
+
+	msgs := s.getMessagesBySessionID(sessID)
+	if len(msgs) == 0 {
+		msgs = append(msgs, message{
+			Role:    "system",
+			Content: systemContent,
+		})
+	}
+
+	msgs = append(msgs, message{
+		Role:    "user",
+		Content: userContent,
+	})
+
+	return sessID, msgs
 }

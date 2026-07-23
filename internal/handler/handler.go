@@ -28,9 +28,9 @@ func (h *Handler) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.Timeout(requestTimeout))
 
-	r.Post("/ot-chat", h.chatWithoutSession)
+	r.Post("/chat/no-memory", h.chatWithoutSession)
 	r.Post("/chat", h.chat)
-	r.Post("/agent-chat", h.agentChat)
+	r.Post("/chat/weather-agent", h.weatherAgentChat)
 
 	return r
 }
@@ -57,13 +57,13 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 type chatBody struct {
-	SessionID *uuid.UUID `json:"session_id,omitempty"`
-	Content   string     `json:"content"`
+	SessionID uuid.UUID `json:"session_id,omitzero"`
+	Content   string    `json:"content"`
 }
 
 func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 	var in chatBody
-	if decode(w, r, &in) {
+	if !decode(w, r, &in) {
 		return
 	}
 
@@ -78,46 +78,36 @@ func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 	var in chatBody
-	if decode(w, r, &in) {
+	if !decode(w, r, &in) {
 		return
 	}
 
-	sessID := uuid.Nil
-	if in.SessionID != nil {
-		sessID = *in.SessionID
-	}
-
-	id, result, err := h.grogapiSvc.Chat(sessID, in.Content)
+	id, result, err := h.grogapiSvc.Chat(in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, chatBody{
-		SessionID: &id,
+		SessionID: id,
 		Content:   result,
 	})
 }
 
-func (h *Handler) agentChat(w http.ResponseWriter, r *http.Request) {
+func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 	var in chatBody
-	if decode(w, r, &in) {
+	if !decode(w, r, &in) {
 		return
 	}
 
-	sessID := uuid.Nil
-	if in.SessionID != nil {
-		sessID = *in.SessionID
-	}
-
-	id, result, err := h.grogapiSvc.AgentChat(sessID, in.Content)
+	id, result, err := h.grogapiSvc.AgentChat("weather", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
 	writeJSON(w, http.StatusCreated, chatBody{
-		SessionID: &id,
+		SessionID: id,
 		Content:   result,
 	})
 }

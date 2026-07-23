@@ -1,6 +1,8 @@
 package grogapi
 
 import (
+	"errors"
+
 	"github.com/arkoes07/llm/internal/mocktool"
 	"github.com/google/uuid"
 )
@@ -18,31 +20,32 @@ func (s *Service) ChatWithoutSession(content string) (string, error) {
 }
 
 func (s *Service) Chat(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
-	sessID, exiMsgs, newMsgs := s.loadMessagesBySessionID(sessID, "You are a terse assistant.", content)
+	sessID, msgs := s.loadMessagesBySessionID(sessID, "You are a terse assistant.", content)
 
-	res, err := s.chatCompletionsAPI(append(exiMsgs, newMsgs...))
+	res, err := s.chatCompletionsAPI(msgs)
 	if err != nil {
 		return sessID, "", err
 	}
 
-	newMsgs = append(newMsgs, res)
-	s.appendMessagesBySessionID(sessID, newMsgs...)
+	msgs = append(msgs, res)
+	s.setMessagesBySessionID(sessID, msgs)
 
 	return sessID, res.Content, nil
 }
 
-func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
-	sessID, exiMsgs, newMsgs := s.loadMessagesBySessionID(sessID, "You are a weather assistant. Respond to the user question and use tools if needed to answer the query.", content)
-	msgs := append(exiMsgs, newMsgs...)
+func (s *Service) AgentChat(name string, sessID uuid.UUID, content string) (uuid.UUID, string, error) {
+	if name != "weather" {
+		return sessID, "", errors.New("unknown agent")
+	}
+
+	sessID, msgs := s.loadMessagesBySessionID(sessID, getAgentSystemContent(name), content)
 
 	for {
-		msg, err := s.chatCompletionsAPI(msgs, getWeatherTool)
+		msg, err := s.chatCompletionsAPI(msgs, getAgentTools(name)...)
 		if err != nil {
 			return sessID, "", err
 		}
-
 		msgs = append(msgs, msg)
-		newMsgs = append(newMsgs, msg)
 
 		if len(msg.ToolCalls) == 0 {
 			break
@@ -57,35 +60,27 @@ func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string
 			}
 
 			msgs = append(msgs, toolMsg)
-			newMsgs = append(newMsgs, toolMsg)
 		}
 	}
 
-	s.appendMessagesBySessionID(sessID, newMsgs...)
-	res := newMsgs[len(newMsgs)-1]
+	s.setMessagesBySessionID(sessID, msgs)
+	res := msgs[len(msgs)-1]
 
 	return sessID, res.Content, nil
 }
 
-func (s *Service) loadMessagesBySessionID(sessID uuid.UUID, systemContent, userContent string) (uuid.UUID, []message, []message) {
-	if sessID == uuid.Nil {
-		sessID = uuid.New()
+func getAgentSystemContent(name string) string {
+	switch name {
+	case "weather":
+		return "You are a weather assistant. Respond to the user question and use tools if needed to answer the query."
 	}
+	return ""
+}
 
-	exiMsgs := s.getMessagesBySessionID(sessID)
-	newMsgs := make([]message, 0)
-
-	if len(exiMsgs) == 0 {
-		newMsgs = append(newMsgs, message{
-			Role:    "system",
-			Content: systemContent,
-		})
+func getAgentTools(name string) []tool {
+	switch name {
+	case "weather":
+		return []tool{getWeatherTool}
 	}
-
-	newMsgs = append(newMsgs, message{
-		Role:    "user",
-		Content: userContent,
-	})
-
-	return sessID, exiMsgs, newMsgs
+	return nil
 }
