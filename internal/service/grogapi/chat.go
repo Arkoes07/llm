@@ -1,11 +1,12 @@
 package grogapi
 
 import (
+	"github.com/arkoes07/llm/internal/mocktool"
 	"github.com/google/uuid"
 )
 
 func (s *Service) ChatWithoutSession(content string) (string, error) {
-	res, err := s.chat([]message{
+	res, err := s.chatCompletionsAPI([]message{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
@@ -19,7 +20,7 @@ func (s *Service) ChatWithoutSession(content string) (string, error) {
 func (s *Service) Chat(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
 	sessID, exiMsgs, newMsgs := s.loadMessagesBySessionID(sessID, "You are a terse assistant.", content)
 
-	res, err := s.chat(append(exiMsgs, newMsgs...))
+	res, err := s.chatCompletionsAPI(append(exiMsgs, newMsgs...))
 	if err != nil {
 		return sessID, "", err
 	}
@@ -35,7 +36,7 @@ func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string
 	msgs := append(exiMsgs, newMsgs...)
 
 	for {
-		msg, err := s.chat(msgs, getWeatherTool)
+		msg, err := s.chatCompletionsAPI(msgs, getWeatherTool)
 		if err != nil {
 			return sessID, "", err
 		}
@@ -48,13 +49,9 @@ func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string
 		}
 
 		for _, toolCall := range msg.ToolCalls {
-			if toolCall.Function.Name != "get_weather" {
-				continue
-			}
-
 			toolMsg := message{
 				Role:       "tool",
-				Content:    getWeather(toolCall.Function.Arguments),
+				Content:    mocktool.Run(toolCall.Function.Name, toolCall.Function.Arguments),
 				ToolCallID: toolCall.ID,
 				Name:       toolCall.Function.Name,
 			}

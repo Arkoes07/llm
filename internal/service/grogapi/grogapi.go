@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/arkoes07/llm/internal/config"
-	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 )
 
@@ -49,46 +48,58 @@ type message struct {
 
 type tool struct {
 	Type     string   `json:"type"`
-	Function function `json:"function"`
+	Function toolFunc `json:"function"`
 }
 
 type toolCall struct {
 	ID       string   `json:"id"`
 	Type     string   `json:"type"`
-	Function function `json:"function"`
+	Function toolFunc `json:"function"`
 }
 
-type function struct {
-	Name        string            `json:"name"`
-	Description string            `json:"description"`
-	Arguments   string            `json:"arguments"`
-	Parameters  jsonschema.Schema `json:"parameters"`
+type toolFunc struct {
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	Arguments   string    `json:"arguments,omitempty"`
+	Parameters  funcParam `json:"parameters,omitempty"`
 }
 
-type chatReq struct {
-	Model    string    `json:"model"`
-	Messages []message `json:"messages"`
-	Tools    []tool    `json:"tools"`
+type funcParam struct {
+	Type       string              `json:"type"`
+	Properties map[string]property `json:"properties"`
+	Required   []string            `json:"required"`
 }
 
-type chatResp struct {
-	ID      string   `json:"id"`
-	Model   string   `json:"model"`
-	Choices []choice `json:"choices"`
+type property struct {
+	Type        string `json:"type"`
+	Description string `json:"description,omitempty"`
+	Enum        []any  `json:"enum,omitempty"`
 }
 
 type choice struct {
 	Message message `json:"message"`
 }
 
-func (s *Service) chat(messages []message, tools ...tool) (message, error) {
-	chatReq := chatReq{
+type chatCompletionsAPIReq struct {
+	Model    string    `json:"model"`
+	Messages []message `json:"messages"`
+	Tools    []tool    `json:"tools"`
+}
+
+type chatCompletionsAPIResp struct {
+	ID      string   `json:"id"`
+	Model   string   `json:"model"`
+	Choices []choice `json:"choices"`
+}
+
+func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message, error) {
+	chatCompletionsAPIReq := chatCompletionsAPIReq{
 		Model:    s.cfg.GrogModelName,
 		Messages: messages,
 		Tools:    tools,
 	}
 
-	body, _ := json.Marshal(chatReq)
+	body, _ := json.Marshal(chatCompletionsAPIReq)
 	req, _ := http.NewRequest(
 		"POST",
 		"https://api.groq.com/openai/v1/chat/completions",
@@ -103,7 +114,7 @@ func (s *Service) chat(messages []message, tools ...tool) (message, error) {
 	}
 	defer resp.Body.Close()
 
-	var res chatResp
+	var res chatCompletionsAPIResp
 	raw, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(raw, &res)
 	if err != nil {
