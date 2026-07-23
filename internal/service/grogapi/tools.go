@@ -3,13 +3,12 @@ package grogapi
 import (
 	"encoding/json"
 
-	"github.com/arkoes07/llm/internal/domain"
 	"github.com/google/jsonschema-go/jsonschema"
 )
 
-var getWeatherTool = domain.Tool{
+var getWeatherTool = tool{
 	Type: "function",
-	Function: domain.Function{
+	Function: function{
 		Name:        "get_weather",
 		Description: "Get current weather for a location",
 		Parameters: jsonschema.Schema{

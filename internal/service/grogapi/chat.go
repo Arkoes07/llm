@@ -2,12 +2,10 @@ package grogapi
 
 import (
 	"github.com/google/uuid"
-
-	"github.com/arkoes07/llm/internal/domain"
 )
 
 func (s *Service) ChatWithoutSession(content string) (string, error) {
-	res, err := s.chat([]domain.Message{
+	res, err := s.chat([]message{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
@@ -54,7 +52,7 @@ func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string
 				continue
 			}
 
-			toolMsg := domain.Message{
+			toolMsg := message{
 				Role:       "tool",
 				Content:    getWeather(toolCall.Function.Arguments),
 				ToolCallID: toolCall.ID,
@@ -72,22 +70,22 @@ func (s *Service) AgentChat(sessID uuid.UUID, content string) (uuid.UUID, string
 	return sessID, res.Content, nil
 }
 
-func (s *Service) loadMessagesBySessionID(sessID uuid.UUID, systemContent, userContent string) (uuid.UUID, []domain.Message, []domain.Message) {
+func (s *Service) loadMessagesBySessionID(sessID uuid.UUID, systemContent, userContent string) (uuid.UUID, []message, []message) {
 	if sessID == uuid.Nil {
 		sessID = uuid.New()
 	}
 
 	exiMsgs := s.getMessagesBySessionID(sessID)
-	newMsgs := make([]domain.Message, 0)
+	newMsgs := make([]message, 0)
 
 	if len(exiMsgs) == 0 {
-		newMsgs = append(newMsgs, domain.Message{
+		newMsgs = append(newMsgs, message{
 			Role:    "system",
 			Content: systemContent,
 		})
 	}
 
-	newMsgs = append(newMsgs, domain.Message{
+	newMsgs = append(newMsgs, message{
 		Role:    "user",
 		Content: userContent,
 	})

@@ -6,14 +6,69 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sync"
+	"time"
 
-	"github.com/arkoes07/llm/internal/domain"
+	"github.com/arkoes07/llm/internal/config"
+	"github.com/google/jsonschema-go/jsonschema"
+	"github.com/google/uuid"
 )
 
+type Service struct {
+	cfg       *config.Config
+	msgsCache map[uuid.UUID]*msgsCacheData
+	msgsMU    *sync.Mutex
+}
+
+func New(cfg *config.Config) *Service {
+	s := &Service{
+		cfg:       cfg,
+		msgsCache: make(map[uuid.UUID]*msgsCacheData),
+		msgsMU:    &sync.Mutex{},
+	}
+
+	go func() {
+		ticker := time.NewTicker(15 * time.Minute)
+		defer ticker.Stop()
+
+		for range ticker.C {
+			s.deleteInvalidMessagesCache()
+		}
+	}()
+
+	return s
+}
+
+type message struct {
+	Role       string     `json:"role"`
+	Content    string     `json:"content"`
+	Name       string     `json:"name,omitempty"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []toolCall `json:"tool_calls,omitempty"`
+}
+
+type tool struct {
+	Type     string   `json:"type"`
+	Function function `json:"function"`
+}
+
+type toolCall struct {
+	ID       string   `json:"id"`
+	Type     string   `json:"type"`
+	Function function `json:"function"`
+}
+
+type function struct {
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Arguments   string            `json:"arguments"`
+	Parameters  jsonschema.Schema `json:"parameters"`
+}
+
 type chatReq struct {
-	Model    string           `json:"model"`
-	Messages []domain.Message `json:"messages"`
-	Tools    []domain.Tool    `json:"tools"`
+	Model    string    `json:"model"`
+	Messages []message `json:"messages"`
+	Tools    []tool    `json:"tools"`
 }
 
 type chatResp struct {
@@ -23,10 +78,10 @@ type chatResp struct {
 }
 
 type choice struct {
-	Message domain.Message `json:"message"`
+	Message message `json:"message"`
 }
 
-func (s *Service) chat(messages []domain.Message, tools ...domain.Tool) (domain.Message, error) {
+func (s *Service) chat(messages []message, tools ...tool) (message, error) {
 	chatReq := chatReq{
 		Model:    s.cfg.GrogModelName,
 		Messages: messages,
@@ -44,7 +99,7 @@ func (s *Service) chat(messages []domain.Message, tools ...domain.Tool) (domain.
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return domain.Message{}, err
+		return message{}, err
 	}
 	defer resp.Body.Close()
 
@@ -52,11 +107,11 @@ func (s *Service) chat(messages []domain.Message, tools ...domain.Tool) (domain.
 	raw, _ := io.ReadAll(resp.Body)
 	err = json.Unmarshal(raw, &res)
 	if err != nil {
-		return domain.Message{}, err
+		return message{}, err
 	}
 
 	if len(res.Choices) == 0 {
-		return domain.Message{}, errors.New("no choices returned")
+		return message{}, errors.New("no choices returned")
 	}
 
 	return res.Choices[0].Message, nil
