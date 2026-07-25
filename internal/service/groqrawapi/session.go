@@ -32,7 +32,7 @@ func (s *Service) setMessagesBySessionID(sessID uuid.UUID, msgs []message) {
 			createdAtUnix: time.Now().Unix(),
 		}
 	}
-	s.msgsCache[sessID].msgs = append(s.msgsCache[sessID].msgs, msgs...)
+	s.msgsCache[sessID].msgs = msgs
 }
 
 func (s *Service) deleteExpiredSessions() {
@@ -41,7 +41,7 @@ func (s *Service) deleteExpiredSessions() {
 
 	nowUnix := time.Now().Unix()
 	for sessID, data := range s.msgsCache {
-		if nowUnix-data.createdAtUnix > int64(15*time.Minute) {
+		if nowUnix-data.createdAtUnix > int64((15 * time.Minute).Seconds()) {
 			delete(s.msgsCache, sessID)
 		}
 	}

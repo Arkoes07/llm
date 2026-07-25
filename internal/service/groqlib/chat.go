@@ -1,6 +1,7 @@
 package groqlib
 
 import (
+	"context"
 	"errors"
 	"log"
 
@@ -10,8 +11,8 @@ import (
 	"github.com/google/uuid"
 )
 
-func (s *Service) ChatWithoutSession(content string) (string, error) {
-	res, err := s.chatCompletionsAPI([]groq.ChatCompletionMessage{
+func (s *Service) ChatWithoutSession(ctx context.Context, content string) (string, error) {
+	res, err := s.chatCompletionsAPI(ctx, []groq.ChatCompletionMessage{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
@@ -22,10 +23,10 @@ func (s *Service) ChatWithoutSession(content string) (string, error) {
 	return res.Content, nil
 }
 
-func (s *Service) Chat(sessID uuid.UUID, content string) (uuid.UUID, string, error) {
+func (s *Service) Chat(ctx context.Context, sessID uuid.UUID, content string) (uuid.UUID, string, error) {
 	sessID, msgs := s.loadMessagesBySessionID(sessID, "You are a terse assistant.", content)
 
-	res, err := s.chatCompletionsAPI(msgs)
+	res, err := s.chatCompletionsAPI(ctx, msgs)
 	if err != nil {
 		return sessID, "", err
 	}
@@ -36,14 +37,14 @@ func (s *Service) Chat(sessID uuid.UUID, content string) (uuid.UUID, string, err
 	return sessID, res.Content, nil
 }
 
-func (s *Service) AgentChat(name string, sessID uuid.UUID, content string) (uuid.UUID, string, error) {
+func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, content string) (uuid.UUID, string, error) {
 	if name != "weather" && name != "log_triage" {
 		return sessID, "", errors.New("unknown agent")
 	}
 
 	sessID, msgs := s.loadMessagesBySessionID(sessID, getAgentSystemContent(name), content)
 	for i := 0; ; i++ {
-		msg, err := s.chatCompletionsAPIWithRetry(msgs, getAgentTools(name)...)
+		msg, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
 		if err != nil {
 			return sessID, "", err
 		}

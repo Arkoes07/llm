@@ -71,7 +71,7 @@ func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.getSvc(in.Implementation).ChatWithoutSession(in.Content)
+	result, err := h.getSvc(in.Implementation).ChatWithoutSession(r.Context(), in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -86,7 +86,7 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.getSvc(in.Implementation).Chat(in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).Chat(r.Context(), in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -104,7 +104,7 @@ func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.getSvc(in.Implementation).AgentChat("weather", in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).AgentChat(r.Context(), "weather", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -122,7 +122,7 @@ func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.getSvc(in.Implementation).AgentChat("log_triage", in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).AgentChat(r.Context(), "log_triage", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

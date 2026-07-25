@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/arkoes07/llm/internal/config"
 	"github.com/conneroisu/groq-go"
+	"github.com/conneroisu/groq-go/pkg/groqerr"
 	"github.com/conneroisu/groq-go/pkg/tools"
 	"github.com/google/uuid"
 )
@@ -46,11 +48,12 @@ func New(cfg *config.Config) (*Service, error) {
 	return s, nil
 }
 
-func (s *Service) chatCompletionsAPI(messages []groq.ChatCompletionMessage, tools ...tools.Tool) (groq.ChatCompletionMessage, error) {
-	res, err := s.cli.ChatCompletion(context.Background(), groq.ChatCompletionRequest{
-		Model:    groq.ChatModel(s.cfg.GrogModelName),
-		Messages: messages,
-		Tools:    tools,
+func (s *Service) chatCompletionsAPI(ctx context.Context, messages []groq.ChatCompletionMessage, tools ...tools.Tool) (groq.ChatCompletionMessage, error) {
+	res, err := s.cli.ChatCompletion(ctx, groq.ChatCompletionRequest{
+		Model:      groq.ChatModel(s.cfg.GrogModelName),
+		Messages:   messages,
+		Tools:      tools,
+		RetryDelay: time.Second,
 	})
 	if err != nil {
 		return groq.ChatCompletionMessage{}, err
@@ -63,16 +66,21 @@ func (s *Service) chatCompletionsAPI(messages []groq.ChatCompletionMessage, tool
 	return res.Choices[0].Message, nil
 }
 
-func (s *Service) chatCompletionsAPIWithRetry(messages []groq.ChatCompletionMessage, tools ...tools.Tool) (groq.ChatCompletionMessage, error) {
+func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []groq.ChatCompletionMessage, tools ...tools.Tool) (groq.ChatCompletionMessage, error) {
 	const maxAttempt = 5
 	backOff := time.Second
 
 	var err error
 	for attempt := 0; ; attempt++ {
 		var msg groq.ChatCompletionMessage
-		msg, err = s.chatCompletionsAPI(messages, tools...)
+		msg, err = s.chatCompletionsAPI(ctx, messages, tools...)
 		if err == nil {
 			return msg, nil
+		}
+
+		if status := httpStatus(err); status != 0 &&
+			status != http.StatusTooManyRequests && status < 500 {
+			return groq.ChatCompletionMessage{}, err
 		}
 
 		if attempt == maxAttempt {
@@ -82,9 +90,30 @@ func (s *Service) chatCompletionsAPIWithRetry(messages []groq.ChatCompletionMess
 		wait := backOff
 		log.Printf("attempt %d failed (%v), retrying in %v", attempt+1, err, wait)
 
-		time.Sleep(wait)
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return groq.ChatCompletionMessage{}, ctx.Err()
+		case <-t.C:
+		}
+
 		backOff *= 2
 	}
 
 	return groq.ChatCompletionMessage{}, fmt.Errorf("after %d attempts: %w", maxAttempt, err)
+}
+
+func httpStatus(err error) int {
+	var apiErr *groqerr.APIError
+	if errors.As(err, &apiErr) {
+		return apiErr.HTTPStatusCode
+	}
+
+	var reqErr *groqerr.ErrRequest
+	if errors.As(err, &reqErr) {
+		return reqErr.HTTPStatusCode
+	}
+
+	return 0
 }

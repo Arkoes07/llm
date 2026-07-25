@@ -2,6 +2,7 @@ package groqrawapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -105,7 +106,7 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("groq %d: %s", e.StatusCode, e.Body)
 }
 
-func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message, error) {
+func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, tools ...tool) (message, error) {
 	chatCompletionsAPIReq := chatCompletionsAPIReq{
 		Model:    s.cfg.GrogModelName,
 		Messages: messages,
@@ -113,8 +114,9 @@ func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message
 	}
 
 	body, _ := json.Marshal(chatCompletionsAPIReq)
-	req, _ := http.NewRequest(
-		"POST",
+	req, _ := http.NewRequestWithContext(
+		ctx,
+		http.MethodPost,
 		"https://api.groq.com/openai/v1/chat/completions",
 		bytes.NewReader(body),
 	)
@@ -149,14 +151,14 @@ func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message
 	return res.Choices[0].Message, nil
 }
 
-func (s *Service) chatCompletionsAPIWithRetry(messages []message, tools ...tool) (message, error) {
+func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []message, tools ...tool) (message, error) {
 	const maxAttempt = 5
 	backOff := time.Second
 
 	var err error
 	for attempt := 0; ; attempt++ {
 		var msg message
-		msg, err = s.chatCompletionsAPI(messages, tools...)
+		msg, err = s.chatCompletionsAPI(ctx, messages, tools...)
 		if err == nil {
 			return msg, nil
 		}
@@ -178,7 +180,14 @@ func (s *Service) chatCompletionsAPIWithRetry(messages []message, tools ...tool)
 		}
 		log.Printf("attempt %d failed (%v), retrying in %v", attempt+1, err, wait)
 
-		time.Sleep(wait)
+		t := time.NewTimer(wait)
+		defer t.Stop()
+		select {
+		case <-ctx.Done():
+			return message{}, ctx.Err()
+		case <-t.C:
+		}
+
 		backOff *= 2
 	}
 
