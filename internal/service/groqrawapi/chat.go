@@ -10,7 +10,7 @@ import (
 )
 
 func (s *Service) ChatWithoutSession(ctx context.Context, content string) (string, error) {
-	res, err := s.chatCompletionsAPI(ctx, []message{
+	res, err := s.chatCompletionsAPIWithRetry(ctx, []message{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
@@ -22,15 +22,17 @@ func (s *Service) ChatWithoutSession(ctx context.Context, content string) (strin
 }
 
 func (s *Service) Chat(ctx context.Context, sessID uuid.UUID, content string) (uuid.UUID, string, error) {
-	sessID, msgs := s.loadMessagesBySessionID(sessID, "You are a terse assistant.", content)
+	sessID, sess, release := s.acquireSession(sessID)
+	defer release()
 
-	res, err := s.chatCompletionsAPI(ctx, msgs)
+	msgs := sess.load("You are a terse assistant.", content)
+
+	res, err := s.chatCompletionsAPIWithRetry(ctx, msgs)
 	if err != nil {
 		return sessID, "", err
 	}
 
-	msgs = append(msgs, res)
-	s.setMessagesBySessionID(sessID, msgs)
+	sess.store(append(msgs, res))
 
 	return sessID, res.Content, nil
 }
@@ -40,7 +42,10 @@ func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, 
 		return sessID, "", errors.New("unknown agent")
 	}
 
-	sessID, msgs := s.loadMessagesBySessionID(sessID, getAgentSystemContent(name), content)
+	sessID, sess, release := s.acquireSession(sessID)
+	defer release()
+
+	msgs := sess.load(getAgentSystemContent(name), content)
 	for i := 0; ; i++ {
 		msg, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
 		if err != nil {
@@ -70,7 +75,7 @@ func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, 
 		}
 	}
 
-	s.setMessagesBySessionID(sessID, msgs)
+	sess.store(msgs)
 	res := msgs[len(msgs)-1]
 
 	return sessID, res.Content, nil

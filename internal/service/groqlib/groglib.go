@@ -17,10 +17,10 @@ import (
 )
 
 type Service struct {
-	cli       *groq.Client
-	cfg       *config.Config
-	msgsCache map[uuid.UUID]*msgsCacheData
-	msgsMU    *sync.Mutex
+	cli         *groq.Client
+	cfg         *config.Config
+	msgsCache   map[uuid.UUID]*msgsCacheData
+	msgsCacheMU *sync.Mutex
 }
 
 func New(cfg *config.Config) (*Service, error) {
@@ -30,10 +30,10 @@ func New(cfg *config.Config) (*Service, error) {
 	}
 
 	s := &Service{
-		cli:       cli,
-		cfg:       cfg,
-		msgsCache: make(map[uuid.UUID]*msgsCacheData),
-		msgsMU:    &sync.Mutex{},
+		cli:         cli,
+		cfg:         cfg,
+		msgsCache:   make(map[uuid.UUID]*msgsCacheData),
+		msgsCacheMU: &sync.Mutex{},
 	}
 
 	go func() {
@@ -63,6 +63,7 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []groq.ChatCo
 		return groq.ChatCompletionMessage{}, errors.New("no choices returned")
 	}
 
+	log.Printf("usage: prompt_tokens=%d completion_tokens=%d\n", res.Usage.PromptTokens, res.Usage.CompletionTokens)
 	return res.Choices[0].Message, nil
 }
 
@@ -71,7 +72,7 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []gr
 	backOff := time.Second
 
 	var err error
-	for attempt := 0; ; attempt++ {
+	for attempt := 1; ; attempt++ {
 		var msg groq.ChatCompletionMessage
 		msg, err = s.chatCompletionsAPI(ctx, messages, tools...)
 		if err == nil {
@@ -88,12 +89,12 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []gr
 		}
 
 		wait := backOff
-		log.Printf("attempt %d failed (%v), retrying in %v", attempt+1, err, wait)
+		log.Printf("attempt %d failed (%v), retrying in %v\n", attempt, err, wait)
 
 		t := time.NewTimer(wait)
-		defer t.Stop()
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return groq.ChatCompletionMessage{}, ctx.Err()
 		case <-t.C:
 		}

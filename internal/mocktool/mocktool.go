@@ -49,17 +49,17 @@ type getWeatherReq struct {
 }
 
 type getWeatherRes struct {
-	Temperature int    `json:"location"`
+	Temperature int    `json:"temperature"`
 	Condition   string `json:"condition"`
 }
 
 func getWeather(args getWeatherReq) getWeatherRes {
 	temp := rand.Intn(15) + 20
 	condition := "sunny"
-	if temp < 30 {
-		condition = "cloudy"
-	} else if temp < 25 {
+	if temp < 25 {
 		condition = "rainy"
+	} else if temp < 30 {
+		condition = "cloudy"
 	}
 
 	if args.Unit == "fahrenheit" {

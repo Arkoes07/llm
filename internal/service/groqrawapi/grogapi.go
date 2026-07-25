@@ -18,16 +18,16 @@ import (
 )
 
 type Service struct {
-	cfg       *config.Config
-	msgsCache map[uuid.UUID]*msgsCacheData
-	msgsMU    *sync.Mutex
+	cfg         *config.Config
+	msgsCache   map[uuid.UUID]*msgsCacheData
+	msgsCacheMU *sync.Mutex
 }
 
 func New(cfg *config.Config) *Service {
 	s := &Service{
-		cfg:       cfg,
-		msgsCache: make(map[uuid.UUID]*msgsCacheData),
-		msgsMU:    &sync.Mutex{},
+		cfg:         cfg,
+		msgsCache:   make(map[uuid.UUID]*msgsCacheData),
+		msgsCacheMU: &sync.Mutex{},
 	}
 
 	go func() {
@@ -87,13 +87,19 @@ type choice struct {
 type chatCompletionsAPIReq struct {
 	Model    string    `json:"model"`
 	Messages []message `json:"messages"`
-	Tools    []tool    `json:"tools"`
+	Tools    []tool    `json:"tools,omitempty"`
 }
 
 type chatCompletionsAPIResp struct {
 	ID      string   `json:"id"`
 	Model   string   `json:"model"`
 	Choices []choice `json:"choices"`
+	Usage   usage    `json:"usage"`
+}
+
+type usage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
 }
 
 type apiError struct {
@@ -113,13 +119,20 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 		Tools:    tools,
 	}
 
-	body, _ := json.Marshal(chatCompletionsAPIReq)
-	req, _ := http.NewRequestWithContext(
+	body, err := json.Marshal(chatCompletionsAPIReq)
+	if err != nil {
+		return message{}, fmt.Errorf("marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(
 		ctx,
 		http.MethodPost,
 		"https://api.groq.com/openai/v1/chat/completions",
 		bytes.NewReader(body),
 	)
+	if err != nil {
+		return message{}, fmt.Errorf("build request: %w", err)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.cfg.GroqAPIKey)
 
@@ -129,7 +142,11 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 	}
 	defer resp.Body.Close()
 
-	raw, _ := io.ReadAll(resp.Body)
+	raw, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return message{}, fmt.Errorf("read response body: %w", err)
+	}
+
 	if resp.StatusCode != http.StatusOK {
 		return message{}, &apiError{
 			StatusCode: resp.StatusCode,
@@ -148,6 +165,7 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 		return message{}, errors.New("no choices returned")
 	}
 
+	log.Printf("usage: prompt_tokens=%d completion_tokens=%d\n", res.Usage.PromptTokens, res.Usage.CompletionTokens)
 	return res.Choices[0].Message, nil
 }
 
@@ -156,7 +174,7 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []me
 	backOff := time.Second
 
 	var err error
-	for attempt := 0; ; attempt++ {
+	for attempt := 1; ; attempt++ {
 		var msg message
 		msg, err = s.chatCompletionsAPI(ctx, messages, tools...)
 		if err == nil {
@@ -178,12 +196,12 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []me
 		if ae != nil && ae.RetryAfter > 0 {
 			wait = ae.RetryAfter
 		}
-		log.Printf("attempt %d failed (%v), retrying in %v", attempt+1, err, wait)
+		log.Printf("attempt %d failed (%v), retrying in %v\n", attempt, err, wait)
 
 		t := time.NewTimer(wait)
-		defer t.Stop()
 		select {
 		case <-ctx.Done():
+			t.Stop()
 			return message{}, ctx.Err()
 		case <-t.C:
 		}
