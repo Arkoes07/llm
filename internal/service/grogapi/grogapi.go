@@ -4,8 +4,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
+	"log"
 	"net/http"
+	"strconv"
 	"sync"
 	"time"
 
@@ -92,6 +95,16 @@ type chatCompletionsAPIResp struct {
 	Choices []choice `json:"choices"`
 }
 
+type apiError struct {
+	StatusCode int
+	Body       string
+	RetryAfter time.Duration
+}
+
+func (e *apiError) Error() string {
+	return fmt.Sprintf("groq %d: %s", e.StatusCode, e.Body)
+}
+
 func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message, error) {
 	chatCompletionsAPIReq := chatCompletionsAPIReq{
 		Model:    s.cfg.GrogModelName,
@@ -114,8 +127,16 @@ func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message
 	}
 	defer resp.Body.Close()
 
-	var res chatCompletionsAPIResp
 	raw, _ := io.ReadAll(resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return message{}, &apiError{
+			StatusCode: resp.StatusCode,
+			Body:       string(raw),
+			RetryAfter: parseRetryAfter(resp.Header.Get("retry-after")),
+		}
+	}
+
+	var res chatCompletionsAPIResp
 	err = json.Unmarshal(raw, &res)
 	if err != nil {
 		return message{}, err
@@ -126,4 +147,50 @@ func (s *Service) chatCompletionsAPI(messages []message, tools ...tool) (message
 	}
 
 	return res.Choices[0].Message, nil
+}
+
+func (s *Service) chatCompletionsAPIWithRetry(messages []message, tools ...tool) (message, error) {
+	const maxAttempt = 5
+	backOff := time.Second
+
+	var err error
+	for attempt := 0; ; attempt++ {
+		var msg message
+		msg, err = s.chatCompletionsAPI(messages, tools...)
+		if err == nil {
+			return msg, nil
+		}
+
+		var ae *apiError
+		if errors.As(err, &ae) {
+			if ae.StatusCode != http.StatusTooManyRequests && ae.StatusCode < 500 {
+				return message{}, err
+			}
+		}
+
+		if attempt == maxAttempt {
+			break
+		}
+
+		wait := backOff
+		if ae != nil && ae.RetryAfter > 0 {
+			wait = ae.RetryAfter
+		}
+		log.Printf("attempt %d failed (%v), retrying in %v", attempt+1, err, wait)
+
+		time.Sleep(wait)
+		backOff *= 2
+	}
+
+	return message{}, fmt.Errorf("after %d attempts: %w", maxAttempt, err)
+}
+
+func parseRetryAfter(h string) time.Duration {
+	if h == "" {
+		return 0
+	}
+	if secs, err := strconv.ParseFloat(h, 64); err == nil {
+		return time.Duration(secs * float64(time.Second))
+	}
+	return 0
 }

@@ -30,7 +30,8 @@ func (h *Handler) Router() http.Handler {
 
 	r.Post("/chat/no-memory", h.chatWithoutSession)
 	r.Post("/chat", h.chat)
-	r.Post("/chat/weather-agent", h.weatherAgentChat)
+	r.Post("/chat/agent/weather", h.weatherAgentChat)
+	r.Post("/chat/agent/log-triage", h.logTriageAgentChat)
 
 	return r
 }
@@ -101,6 +102,24 @@ func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	id, result, err := h.grogapiSvc.AgentChat("weather", in.SessionID, in.Content)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, chatBody{
+		SessionID: id,
+		Content:   result,
+	})
+}
+
+func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
+	var in chatBody
+	if !decode(w, r, &in) {
+		return
+	}
+
+	id, result, err := h.grogapiSvc.AgentChat("log_triage", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
