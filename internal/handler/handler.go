@@ -16,12 +16,12 @@ import (
 const requestTimeout = 30 * time.Second
 
 type Handler struct {
-	grogapiSvc service.Service
+	groqrawapiSvc service.Service
 }
 
-func New(grogapiSvc service.Service) *Handler {
+func New(groqrawapiSvc service.Service) *Handler {
 	return &Handler{
-		grogapiSvc: grogapiSvc,
+		groqrawapiSvc: groqrawapiSvc,
 	}
 }
 func (h *Handler) Router() http.Handler {
@@ -68,7 +68,7 @@ func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.grogapiSvc.ChatWithoutSession(in.Content)
+	result, err := h.groqrawapiSvc.ChatWithoutSession(in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -83,7 +83,7 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.grogapiSvc.Chat(in.SessionID, in.Content)
+	id, result, err := h.groqrawapiSvc.Chat(in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -101,7 +101,7 @@ func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.grogapiSvc.AgentChat("weather", in.SessionID, in.Content)
+	id, result, err := h.groqrawapiSvc.AgentChat("weather", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -119,7 +119,7 @@ func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.grogapiSvc.AgentChat("log_triage", in.SessionID, in.Content)
+	id, result, err := h.groqrawapiSvc.AgentChat("log_triage", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return

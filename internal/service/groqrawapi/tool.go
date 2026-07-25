@@ -1,4 +1,4 @@
-package grogapi
+package groqrawapi
 
 var getWeatherTool = tool{
 	Type: "function",

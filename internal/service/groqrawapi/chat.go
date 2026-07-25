@@ -1,4 +1,4 @@
-package grogapi
+package groqrawapi
 
 import (
 	"errors"
