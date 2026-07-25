@@ -15,6 +15,7 @@ import (
 
 	"github.com/arkoes07/llm/internal/config"
 	"github.com/arkoes07/llm/internal/handler"
+	"github.com/arkoes07/llm/internal/service/groqlib"
 	"github.com/arkoes07/llm/internal/service/groqrawapi"
 )
 
@@ -32,11 +33,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	groqapiSvc := groqrawapi.New(&cfg)
+	groqrawapiSvc := groqrawapi.New(&cfg)
+	groqlibSvc, err := groqlib.New(&cfg)
+	if err != nil {
+		panic(err)
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.HTTPAddr,
-		Handler:           handler.New(groqapiSvc).Router(),
+		Handler:           handler.New(groqrawapiSvc, groqlibSvc).Router(),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 

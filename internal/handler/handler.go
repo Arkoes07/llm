@@ -17,11 +17,13 @@ const requestTimeout = 30 * time.Second
 
 type Handler struct {
 	groqrawapiSvc service.Service
+	groqlibSvc    service.Service
 }
 
-func New(groqrawapiSvc service.Service) *Handler {
+func New(groqrawapiSvc service.Service, groqlibSvc service.Service) *Handler {
 	return &Handler{
 		groqrawapiSvc: groqrawapiSvc,
+		groqlibSvc:    groqlibSvc,
 	}
 }
 func (h *Handler) Router() http.Handler {
@@ -58,8 +60,9 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 type chatBody struct {
-	SessionID uuid.UUID `json:"session_id,omitzero"`
-	Content   string    `json:"content"`
+	SessionID      uuid.UUID `json:"session_id,omitzero"`
+	Content        string    `json:"content"`
+	Implementation string    `json:"implementation"`
 }
 
 func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
@@ -68,7 +71,7 @@ func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := h.groqrawapiSvc.ChatWithoutSession(in.Content)
+	result, err := h.getSvc(in.Implementation).ChatWithoutSession(in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -83,7 +86,7 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.groqrawapiSvc.Chat(in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).Chat(in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -101,7 +104,7 @@ func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.groqrawapiSvc.AgentChat("weather", in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).AgentChat("weather", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -119,7 +122,7 @@ func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, result, err := h.groqrawapiSvc.AgentChat("log_triage", in.SessionID, in.Content)
+	id, result, err := h.getSvc(in.Implementation).AgentChat("log_triage", in.SessionID, in.Content)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -129,4 +132,11 @@ func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
 		SessionID: id,
 		Content:   result,
 	})
+}
+
+func (h *Handler) getSvc(name string) service.Service {
+	if name == "groq_raw_api" {
+		return h.groqrawapiSvc
+	}
+	return h.groqlibSvc
 }
