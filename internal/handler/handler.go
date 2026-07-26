@@ -63,7 +63,7 @@ func decode(w http.ResponseWriter, r *http.Request, dst any) bool {
 type chatBody struct {
 	SessionID      uuid.UUID `json:"session_id,omitzero"`
 	Content        string    `json:"content"`
-	Implementation string    `json:"implementation"`
+	Implementation string    `json:"implementation,omitempty"`
 }
 
 func decodeChat(w http.ResponseWriter, r *http.Request) (chatBody, bool) {
