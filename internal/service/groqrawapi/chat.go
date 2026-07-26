@@ -9,9 +9,6 @@ import (
 	"github.com/google/uuid"
 )
 
-// logUsage records per-call token counts so context growth can be charted per
-// session. Logged here rather than in chatCompletionsAPI because only the
-// callers know which session and iteration a call belongs to.
 func logUsage(sessID uuid.UUID, iteration int, u usage) {
 	log.Printf("usage: session=%s iteration=%d prompt_tokens=%d completion_tokens=%d\n",
 		sessID, iteration, u.PromptTokens, u.CompletionTokens)
