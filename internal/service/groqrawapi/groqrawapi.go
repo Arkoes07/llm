@@ -31,7 +31,7 @@ func New(cfg *config.Config) *Service {
 	}
 
 	go func() {
-		ticker := time.NewTicker(15 * time.Minute)
+		ticker := time.NewTicker(sessionTTL)
 		defer ticker.Stop()
 
 		for range ticker.C {
@@ -63,7 +63,7 @@ type toolCall struct {
 
 type toolFunc struct {
 	Name        string    `json:"name"`
-	Description string    `json:"description"`
+	Description string    `json:"description,omitempty"`
 	Arguments   string    `json:"arguments,omitempty"`
 	Parameters  funcParam `json:"parameters,omitzero"`
 }
@@ -112,16 +112,16 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("groq %d: %s", e.StatusCode, e.Body)
 }
 
-func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, tools ...tool) (message, error) {
+func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, tools ...tool) (message, usage, error) {
 	chatCompletionsAPIReq := chatCompletionsAPIReq{
-		Model:    s.cfg.GrogModelName,
+		Model:    s.cfg.GroqModelName,
 		Messages: messages,
 		Tools:    tools,
 	}
 
 	body, err := json.Marshal(chatCompletionsAPIReq)
 	if err != nil {
-		return message{}, fmt.Errorf("marshal request: %w", err)
+		return message{}, usage{}, fmt.Errorf("marshal request: %w", err)
 	}
 
 	req, err := http.NewRequestWithContext(
@@ -131,24 +131,24 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 		bytes.NewReader(body),
 	)
 	if err != nil {
-		return message{}, fmt.Errorf("build request: %w", err)
+		return message{}, usage{}, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+s.cfg.GroqAPIKey)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return message{}, err
+		return message{}, usage{}, err
 	}
 	defer resp.Body.Close()
 
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return message{}, fmt.Errorf("read response body: %w", err)
+		return message{}, usage{}, fmt.Errorf("read response body: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return message{}, &apiError{
+		return message{}, usage{}, &apiError{
 			StatusCode: resp.StatusCode,
 			Body:       string(raw),
 			RetryAfter: parseRetryAfter(resp.Header.Get("retry-after")),
@@ -158,33 +158,35 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 	var res chatCompletionsAPIResp
 	err = json.Unmarshal(raw, &res)
 	if err != nil {
-		return message{}, err
+		return message{}, usage{}, err
 	}
 
 	if len(res.Choices) == 0 {
-		return message{}, errors.New("no choices returned")
+		return message{}, usage{}, errors.New("no choices returned")
 	}
 
-	log.Printf("usage: prompt_tokens=%d completion_tokens=%d\n", res.Usage.PromptTokens, res.Usage.CompletionTokens)
-	return res.Choices[0].Message, nil
+	return res.Choices[0].Message, res.Usage, nil
 }
 
-func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []message, tools ...tool) (message, error) {
+func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []message, tools ...tool) (message, usage, error) {
 	const maxAttempt = 5
 	backOff := time.Second
 
 	var err error
 	for attempt := 1; ; attempt++ {
-		var msg message
-		msg, err = s.chatCompletionsAPI(ctx, messages, tools...)
+		var (
+			msg message
+			u   usage
+		)
+		msg, u, err = s.chatCompletionsAPI(ctx, messages, tools...)
 		if err == nil {
-			return msg, nil
+			return msg, u, nil
 		}
 
 		var ae *apiError
 		if errors.As(err, &ae) {
 			if ae.StatusCode != http.StatusTooManyRequests && ae.StatusCode < 500 {
-				return message{}, err
+				return message{}, usage{}, err
 			}
 		}
 
@@ -202,14 +204,14 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []me
 		select {
 		case <-ctx.Done():
 			t.Stop()
-			return message{}, ctx.Err()
+			return message{}, usage{}, ctx.Err()
 		case <-t.C:
 		}
 
 		backOff *= 2
 	}
 
-	return message{}, fmt.Errorf("after %d attempts: %w", maxAttempt, err)
+	return message{}, usage{}, fmt.Errorf("after %d attempts: %w", maxAttempt, err)
 }
 
 func parseRetryAfter(h string) time.Duration {

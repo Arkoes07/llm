@@ -1,6 +1,3 @@
-// Command api is the Ikhtiar HTTP server. It runs schema migrations on startup (NOT the seed —
-// production data is added via the API; seeding is opt-in for dev/testing), ensures the implicit
-// player exists, then serves.
 package main
 
 import (

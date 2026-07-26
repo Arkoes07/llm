@@ -9,14 +9,23 @@ import (
 	"github.com/google/uuid"
 )
 
+// logUsage records per-call token counts so context growth can be charted per
+// session. Logged here rather than in chatCompletionsAPI because only the
+// callers know which session and iteration a call belongs to.
+func logUsage(sessID uuid.UUID, iteration int, u usage) {
+	log.Printf("usage: session=%s iteration=%d prompt_tokens=%d completion_tokens=%d\n",
+		sessID, iteration, u.PromptTokens, u.CompletionTokens)
+}
+
 func (s *Service) ChatWithoutSession(ctx context.Context, content string) (string, error) {
-	res, err := s.chatCompletionsAPIWithRetry(ctx, []message{
+	res, u, err := s.chatCompletionsAPIWithRetry(ctx, []message{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
 	if err != nil {
 		return "", err
 	}
+	logUsage(uuid.Nil, 1, u)
 
 	return res.Content, nil
 }
@@ -27,10 +36,11 @@ func (s *Service) Chat(ctx context.Context, sessID uuid.UUID, content string) (u
 
 	msgs := sess.load("You are a terse assistant.", content)
 
-	res, err := s.chatCompletionsAPIWithRetry(ctx, msgs)
+	res, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs)
 	if err != nil {
 		return sessID, "", err
 	}
+	logUsage(sessID, 1, u)
 
 	sess.store(append(msgs, res))
 
@@ -47,10 +57,11 @@ func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, 
 
 	msgs := sess.load(getAgentSystemContent(name), content)
 	for i := 0; ; i++ {
-		msg, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
+		msg, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
 		if err != nil {
 			return sessID, "", err
 		}
+		logUsage(sessID, i+1, u)
 		msgs = append(msgs, msg)
 
 		if len(msg.ToolCalls) == 0 {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -65,9 +66,23 @@ type chatBody struct {
 	Implementation string    `json:"implementation"`
 }
 
-func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
+func decodeChat(w http.ResponseWriter, r *http.Request) (chatBody, bool) {
 	var in chatBody
 	if !decode(w, r, &in) {
+		return in, false
+	}
+
+	if strings.TrimSpace(in.Content) == "" {
+		writeError(w, http.StatusBadRequest, "content is required")
+		return in, false
+	}
+
+	return in, true
+}
+
+func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
+	in, ok := decodeChat(w, r)
+	if !ok {
 		return
 	}
 
@@ -81,8 +96,8 @@ func (h *Handler) chatWithoutSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
-	var in chatBody
-	if !decode(w, r, &in) {
+	in, ok := decodeChat(w, r)
+	if !ok {
 		return
 	}
 
@@ -99,8 +114,8 @@ func (h *Handler) chat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
-	var in chatBody
-	if !decode(w, r, &in) {
+	in, ok := decodeChat(w, r)
+	if !ok {
 		return
 	}
 
@@ -117,8 +132,8 @@ func (h *Handler) weatherAgentChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
-	var in chatBody
-	if !decode(w, r, &in) {
+	in, ok := decodeChat(w, r)
+	if !ok {
 		return
 	}
 

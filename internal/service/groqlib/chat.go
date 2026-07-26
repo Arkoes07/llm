@@ -11,14 +11,20 @@ import (
 	"github.com/google/uuid"
 )
 
+func logUsage(sessID uuid.UUID, iteration int, u groq.Usage) {
+	log.Printf("usage: session=%s iteration=%d prompt_tokens=%d completion_tokens=%d\n",
+		sessID, iteration, u.PromptTokens, u.CompletionTokens)
+}
+
 func (s *Service) ChatWithoutSession(ctx context.Context, content string) (string, error) {
-	res, err := s.chatCompletionsAPIWithRetry(ctx, []groq.ChatCompletionMessage{
+	res, u, err := s.chatCompletionsAPIWithRetry(ctx, []groq.ChatCompletionMessage{
 		{Role: "system", Content: "You are a terse assistant."},
 		{Role: "user", Content: content},
 	})
 	if err != nil {
 		return "", err
 	}
+	logUsage(uuid.Nil, 1, u)
 
 	return res.Content, nil
 }
@@ -29,10 +35,11 @@ func (s *Service) Chat(ctx context.Context, sessID uuid.UUID, content string) (u
 
 	msgs := sess.load("You are a terse assistant.", content)
 
-	res, err := s.chatCompletionsAPIWithRetry(ctx, msgs)
+	res, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs)
 	if err != nil {
 		return sessID, "", err
 	}
+	logUsage(sessID, 1, u)
 
 	sess.store(append(msgs, res))
 
@@ -49,10 +56,11 @@ func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, 
 
 	msgs := sess.load(getAgentSystemContent(name), content)
 	for i := 0; ; i++ {
-		msg, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
+		msg, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
 		if err != nil {
 			return sessID, "", err
 		}
+		logUsage(sessID, i+1, u)
 		msgs = append(msgs, msg)
 
 		if len(msg.ToolCalls) == 0 {
