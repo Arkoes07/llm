@@ -16,7 +16,7 @@ func (s *Service) GenerateStudyPlan(ctx context.Context, param domain.StudyPlanP
 	}
 
 	messages := []message{
-		{Role: "system", Content: "You are a study plan assistant. Generate a study plan matching the required JSON schema, based on the user request (a JSON object with fields: topic, current_level (beginner, intermediate, advanced), weeks, and hours_per_week)."},
+		{Role: "system", Content: domain.StudyPlanSystemPrompt},
 		{Role: "user", Content: string(content)},
 	}
 

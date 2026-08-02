@@ -17,7 +17,7 @@ func (s *Service) GenerateStudyPlan(ctx context.Context, param domain.StudyPlanP
 	}
 
 	messages := []groq.ChatCompletionMessage{
-		{Role: groq.RoleSystem, Content: "You are a study plan assistant. Generate a study plan matching the required JSON schema, based on the user request (a JSON object with fields: topic, current_level (beginner, intermediate, advanced), weeks, and hours_per_week)."},
+		{Role: groq.RoleSystem, Content: domain.StudyPlanSystemPrompt},
 		{Role: groq.RoleUser, Content: string(content)},
 	}
 
