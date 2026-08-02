@@ -1,6 +1,6 @@
 # llm
 
-A learning project: building LLM chat and tool-calling agents in Go, from scratch and with an SDK, side by side.
+A learning project: building LLM chat, tool-calling agents, and structured output in Go, from scratch and with an SDK, side by side.
 
 Every endpoint is served by **two interchangeable implementations** of the same interface:
 
@@ -28,7 +28,7 @@ go run .
 
 ## Endpoints
 
-All four take the same body and return the same shape.
+The four chat endpoints take the same body and return the same shape.
 
 ```jsonc
 {
@@ -44,6 +44,7 @@ All four take the same body and return the same shape.
 | `POST` | `/chat` | multi-turn, history kept per `session_id` |
 | `POST` | `/chat/agent/weather` | tool-calling agent, one tool |
 | `POST` | `/chat/agent/log-triage` | tool-calling agent, three tools |
+| `POST` | `/study-plan` | structured output — see [below](#structured-output), different body |
 
 ### A plain chat turn
 
@@ -85,6 +86,30 @@ Getting this right takes about six tool calls: read checkout logs → rule out i
 
 Every model call logs its token usage with the session and iteration, so you can watch context grow across a conversation — the numbers climb fast once tool results start accumulating.
 
+### Structured output
+
+`/study-plan` asks the model to fill in a Go struct rather than reply in prose. It takes a different body — no `content`, no session:
+
+```bash
+curl -s localhost:8080/study-plan -d '{
+  "param": {"topic":"go concurrency","current_level":"beginner","weeks":4,"hours_per_week":6}
+}'
+```
+
+```jsonc
+{
+  "implementation": "groq_raw_api",  // optional, as everywhere else
+  "param": {
+    "topic": "go concurrency",
+    "current_level": "beginner",     // beginner | intermediate | advanced
+    "weeks": 4,
+    "hours_per_week": 6
+  }
+}
+```
+
+The reply is a `domain.StudyPlan`: a topic, a total, a list of weeks (each with focus, activities, and an outcome), and the assumptions the model made.
+
 ## Layout
 
 ```
@@ -94,6 +119,7 @@ internal/handler              chi routes, request decoding, impl selection
 internal/service              the Service interface both impls satisfy
 internal/service/groqrawapi   raw net/http implementation
 internal/service/groqlib      groq-go SDK implementation
+internal/domain               shared request/response types for structured output
 internal/mocktool             fake tools: weather + the log-triage world
 ```
 
@@ -104,7 +130,9 @@ Deliberate, given the scope, but real:
 - **Sessions are per-implementation.** The two services own separate stores, so reusing a `session_id` while switching `implementation` silently starts a fresh history under the same ID.
 - **The system prompt is only set on a session's first turn**, so continuing a `/chat` session on an agent endpoint keeps the original prompt while swapping in the agent's tools.
 - **No iteration cap on the agent loop** yet.
-- **No tests.** The session and history logic is pure and would be easy to cover; it just isn't yet.
+- **No tests.** The session, history, and schema-generation logic is pure and would be easy to cover; it just isn't yet.
+- The two implementations send slightly different JSON schemas for `/study-plan` (see above). Both are valid, but it means structured output is not byte-for-byte identical across them.
+- The raw implementation's Groq URL is hardcoded, so it can't be pointed at a test server the way the SDK client can.
 - Every upstream failure surfaces as `500`, losing the distinction between a rate limit, a timeout, and a bug.
 - Session expiry is measured from creation, not last use, so a long conversation is evicted 15 minutes in.
 - In-memory only, no auth, single user. Not built to deploy.

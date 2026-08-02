@@ -56,7 +56,7 @@ func (s *Service) AgentChat(ctx context.Context, name string, sessID uuid.UUID, 
 
 	msgs := sess.load(getAgentSystemContent(name), content)
 	for i := 0; ; i++ {
-		msg, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs, getAgentTools(name)...)
+		msg, u, err := s.chatCompletionsAPIWithRetry(ctx, msgs, withTools(getAgentTools(name)...))
 		if err != nil {
 			return sessID, "", err
 		}

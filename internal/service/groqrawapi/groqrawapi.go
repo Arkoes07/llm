@@ -9,11 +9,13 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"reflect"
 	"strconv"
 	"sync"
 	"time"
 
 	"github.com/arkoes07/llm/internal/config"
+	"github.com/google/jsonschema-go/jsonschema"
 	"github.com/google/uuid"
 )
 
@@ -85,9 +87,21 @@ type choice struct {
 }
 
 type chatCompletionsAPIReq struct {
-	Model    string    `json:"model"`
-	Messages []message `json:"messages"`
-	Tools    []tool    `json:"tools,omitempty"`
+	Model          string          `json:"model"`
+	Messages       []message       `json:"messages"`
+	Tools          []tool          `json:"tools,omitempty"`
+	ResponseFormat *responseFormat `json:"response_format,omitempty"`
+}
+
+type responseFormat struct {
+	Type       string          `json:"type"`
+	JSONSchema *jsonSchemaSpec `json:"json_schema,omitempty"`
+}
+
+type jsonSchemaSpec struct {
+	Name   string             `json:"name"`
+	Schema *jsonschema.Schema `json:"schema"`
+	Strict bool               `json:"strict"`
 }
 
 type chatCompletionsAPIResp struct {
@@ -112,13 +126,44 @@ func (e *apiError) Error() string {
 	return fmt.Sprintf("groq %d: %s", e.StatusCode, e.Body)
 }
 
-func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, tools ...tool) (message, usage, error) {
-	chatCompletionsAPIReq := chatCompletionsAPIReq{
-		Model:    s.cfg.GroqModelName,
-		Messages: messages,
-		Tools:    tools,
-	}
+type callOption func(*chatCompletionsAPIReq) error
 
+func withTools(ts ...tool) callOption {
+	return func(req *chatCompletionsAPIReq) error {
+		req.Tools = ts
+		return nil
+	}
+}
+
+func withJSONSchema(name string, v any) callOption {
+	return func(req *chatCompletionsAPIReq) error {
+		t := reflect.TypeOf(v)
+		if t == nil {
+			return fmt.Errorf("infer %q schema: nil value", name)
+		}
+
+		for t.Kind() == reflect.Pointer {
+			t = t.Elem()
+		}
+
+		sch, err := jsonschema.ForType(t, nil)
+		if err != nil {
+			return fmt.Errorf("infer %q schema: %w", name, err)
+		}
+
+		req.ResponseFormat = &responseFormat{
+			Type: "json_schema",
+			JSONSchema: &jsonSchemaSpec{
+				Name:   name,
+				Schema: sch,
+				Strict: true,
+			},
+		}
+		return nil
+	}
+}
+
+func (s *Service) chatCompletionsAPI(ctx context.Context, chatCompletionsAPIReq chatCompletionsAPIReq) (message, usage, error) {
 	body, err := json.Marshal(chatCompletionsAPIReq)
 	if err != nil {
 		return message{}, usage{}, fmt.Errorf("marshal request: %w", err)
@@ -168,9 +213,19 @@ func (s *Service) chatCompletionsAPI(ctx context.Context, messages []message, to
 	return res.Choices[0].Message, res.Usage, nil
 }
 
-func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []message, tools ...tool) (message, usage, error) {
+func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []message, opts ...callOption) (message, usage, error) {
 	const maxAttempt = 5
 	backOff := time.Second
+
+	req := chatCompletionsAPIReq{
+		Model:    s.cfg.GroqModelName,
+		Messages: messages,
+	}
+	for _, opt := range opts {
+		if err := opt(&req); err != nil {
+			return message{}, usage{}, err
+		}
+	}
 
 	var err error
 	for attempt := 1; ; attempt++ {
@@ -178,7 +233,7 @@ func (s *Service) chatCompletionsAPIWithRetry(ctx context.Context, messages []me
 			msg message
 			u   usage
 		)
-		msg, u, err = s.chatCompletionsAPI(ctx, messages, tools...)
+		msg, u, err = s.chatCompletionsAPI(ctx, req)
 		if err == nil {
 			return msg, u, nil
 		}

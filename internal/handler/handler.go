@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 
+	"github.com/arkoes07/llm/internal/domain"
 	"github.com/arkoes07/llm/internal/service"
 )
 
@@ -35,6 +36,7 @@ func (h *Handler) Router() http.Handler {
 	r.Post("/chat", h.chat)
 	r.Post("/chat/agent/weather", h.weatherAgentChat)
 	r.Post("/chat/agent/log-triage", h.logTriageAgentChat)
+	r.Post("/study-plan", h.generateStudyPlan)
 
 	return r
 }
@@ -147,6 +149,26 @@ func (h *Handler) logTriageAgentChat(w http.ResponseWriter, r *http.Request) {
 		SessionID: id,
 		Content:   result,
 	})
+}
+
+type generateStudyPlanBody struct {
+	Implementation string                `json:"implementation"`
+	Param          domain.StudyPlanParam `json:"param"`
+}
+
+func (h *Handler) generateStudyPlan(w http.ResponseWriter, r *http.Request) {
+	var in generateStudyPlanBody
+	if !decode(w, r, &in) {
+		return
+	}
+
+	result, err := h.getSvc(in.Implementation).GenerateStudyPlan(r.Context(), in.Param)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func (h *Handler) getSvc(name string) service.Service {
